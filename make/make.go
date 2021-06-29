@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -55,6 +56,26 @@ func main() {
 	projectRoot, _ := filepath.Abs(os.Args[2])
 	GOOS := os.Args[3]
 	GOARCH := os.Args[4]
+	cc := ""
+	ar := ""
+	ranlib := ""
+	var ccArgs []string
+	if len(os.Args) > 6 {
+		cc = os.Args[5]
+		ar = os.Args[6]
+
+		ccArgs = strings.Split(cc, " ")
+		if len(ccArgs) == 1 {
+			ccArgs = []string{}
+		} else if len(ccArgs) > 1 {
+			cc = ccArgs[0]
+			ccArgs = ccArgs[1:]
+		}
+	}
+
+	if len(os.Args) > 7 {
+		ranlib = os.Args[7]
+	}
 
 	buildDir := filepath.Join(projectRoot, "build", GOOS, GOARCH)
 	target := filepath.Join(buildDir, "libnative.a")
@@ -81,15 +102,20 @@ func main() {
 		return
 	}
 
-	cc := os.Getenv("CC")
 	if cc == "" {
-		cc, err = findCc()
-		if err != nil {
-			println("Search CC: " + err.Error())
+		cc = os.Getenv("CC")
+		if cc == "" {
+			cc, err = findCc()
+			if err != nil {
+				println("Search CC: " + err.Error())
 
-			os.Exit(1)
+				os.Exit(1)
+			}
 		}
 	}
+
+	println("Using CC: " + cc)
+	println("Using CCArgs: " + strings.Join(ccArgs, " "))
 
 	lwipInclude := filepath.Join(projectRoot, "lwip", "include")
 	lwipArchInclude := filepath.Join(projectRoot, "lwip", "ports", "unix", "include")
@@ -102,7 +128,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	cFlags := []string{"-Ofast", "-fPIC", "-I" + lwipInclude, "-I" + nativeInclude, "-I" + lwipArchInclude}
+	cFlags := []string{"-Ofast", "-I" + lwipInclude, "-I" + nativeInclude, "-I" + lwipArchInclude}
+	if GOOS != "windows" {
+		cFlags = append([]string{"-fPIC"}, cFlags...)
+	}
 	cFlags = append(cFlags, externalCFlags...)
 	objsDir := filepath.Join(buildDir, "objs")
 
@@ -123,35 +152,51 @@ func main() {
 
 		fmt.Printf("[%2d/%2d] %s\n", i+1, len(changed), s.path)
 
-		runCommand(append([]string{cc, "-c", "-o", obj, filepath.Join(projectRoot, s.path)}, cFlags...))
+		ccCmdArgs := []string{"-c", "-o", obj, filepath.Join(projectRoot, s.path)}
+		if len(ccArgs) > 0 {
+			ccCmdArgs = append(ccArgs, ccCmdArgs...)
+		}
+
+		ccCmdArgs = append(ccCmdArgs, cFlags...)
+
+		runCommand(append([]string{cc}, ccCmdArgs...))
 
 		objs = append(objs, obj)
 	}
 
-	ar := os.Getenv("AR")
 	if ar == "" {
-		ar, err = exec.LookPath("ar")
-		if err != nil {
-			println("C archiver ar unavailable: " + err.Error())
-
-			os.Exit(1)
-		}
-	}
-
-	runCommand(append([]string{ar, "rcs", target}, objs...))
-
-	if GOOS == "ios" || GOOS == "darwin" {
-		ranlib := os.Getenv("RANLIB")
-		if ranlib == "" {
-			ranlib, err = exec.LookPath("ranlib")
+		ar = os.Getenv("AR")
+		if ar == "" {
+			ar, err = exec.LookPath("ar")
 			if err != nil {
-				println("ranlib unavailable: " + err.Error())
+				println("C archiver ar unavailable: " + err.Error())
 
 				os.Exit(1)
 			}
 		}
+	}
 
+	if runtime.GOOS == "darwin" {
+		if ranlib == "" {
+			ranlib = os.Getenv("RANLIB")
+			if ranlib == "" {
+				ranlib, err = exec.LookPath("ranlib")
+				if err != nil {
+					println("ranlib unavailable: " + err.Error())
+
+					os.Exit(1)
+				}
+			}
+		}
+
+		println("Using AR: " + ar)
+		runCommand(append([]string{ar, "Scr", target}, objs...))
+
+		println("Using ranlib: " + ranlib)
 		runCommand([]string{ranlib, "-no_warning_for_no_symbols", "-c", target})
+	} else {
+		println("Using AR: " + ar)
+		runCommand(append([]string{ar, "rcs", target}, objs...))
 	}
 
 	replacer := strings.NewReplacer(
@@ -164,7 +209,7 @@ func main() {
 	)
 
 	err = ioutil.WriteFile(
-		"build_"+GOOS+"_"+GOARCH+".go",
+		filepath.Join(projectRoot, "build_"+GOOS+"_"+GOARCH+".go"),
 		[]byte(strings.TrimSpace(replacer.Replace(generatedFile))),
 		0644,
 	)

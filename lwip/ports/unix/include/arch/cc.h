@@ -48,9 +48,13 @@
 #endif
 
 #define LWIP_TIMEVAL_PRIVATE 0
-#include <sys/time.h>
+#ifdef LWIP_UNIX_MACH
+#include <sys/times.h>
+#else
+#include <time.h>
+#endif
 
-#define LWIP_ERRNO_INCLUDE <errno.h>
+#define LWIP_ERRNO_INCLUDE 1
 
 #if defined(LWIP_UNIX_LINUX) || defined(LWIP_UNIX_HURD)
 #define LWIP_ERRNO_STDINCLUDE	1

@@ -50,12 +50,14 @@ perf_print(unsigned long c1l, unsigned long c1h,
   fflush(NULL);
 }
 
+#ifdef LWIP_UNIX_MACH
 void
 perf_print_times(struct tms *start, struct tms *end, char *key)
 {
   fprintf(f, "%s: %lu\n", key, end->tms_stime - start->tms_stime);
   fflush(NULL);  
 }
+#endif
 
 void
 perf_init(char *fname)

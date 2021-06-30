@@ -1,5 +1,6 @@
 package tun2socket
 
+//#cgo CFLAGS: -I./native
 //#include "link.h"
 import "C"
 

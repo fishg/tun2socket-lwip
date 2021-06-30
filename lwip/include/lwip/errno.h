@@ -185,7 +185,7 @@ extern int errno;
 #else /* LWIP_ERRNO_STDINCLUDE */
 /* Define LWIP_ERRNO_INCLUDE to an equivalent of <errno.h> to include the error defines here */
 #ifdef LWIP_ERRNO_INCLUDE
-#include LWIP_ERRNO_INCLUDE
+#include <errno.h>
 #endif /* LWIP_ERRNO_INCLUDE */
 #endif /* LWIP_ERRNO_STDINCLUDE */
 
